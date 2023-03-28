@@ -13,10 +13,9 @@ from distributed import (
     get_world_size,
 )
 
-import sys
-sys.path.append(r'C:\Users\Evgeniy\Jupyter\Work\stylegan2\inception_v3')
-from InceptionV3 import Inception3 as MODEL
-from fid_score import *
+from inception_v3.inception_v3 import Inception3 as MODEL
+
+# from fid_score import *
 
 try:
     import wandb
