@@ -9,11 +9,73 @@ from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.optimize import minimize
 from torch import nn
 from network import MappingNetwork, Generator
-from training_loop import generate_noise, mixing_regularization, generate_z
+from training_loop import generate_noise, mixing_regularization, generate_z, data_plot
+
+
+# def generate():
+#     with torch.no_grad():
+#         z = [torch.from_numpy(np.expand_dims(res.X, axis=0)).to(device=device, dtype=torch.float32)]
+#         w = [net_M(z_i) for z_i in z]
+#         w = mixing_regularization(w, net_G.n_blocks)
+# Поскольку здесь шум, нужно как-то сделать его константой или убрать совсем, чтобы результат был одним и тем же
+#         noise = generate_noise(z[0].shape[0], net_G.n_blocks, np.array(net_G.initial_constant.shape[2:]), device)
+#         x = net_G(w, noise)
+#         x = torch.where(x >= 0, 1., -1.) * 0.5 + 0.5
+#         x = x.cpu().numpy()
+#         data_plot(x[0, 0])
+#     return x
+
+
+def get_boundaries(opt_space, lower=-3, upper=3, var_shapes=None, net_M=None):
+    """
+    opt_space - optimization space, either 'z' or 'z+noise' or 'w or 'w+noise'
+    lower - base lower bound for the variables (usually min of N(0, 1))
+    upper - base upper bound for the variables (usually max of N(0, 1))
+    var_shapes - variable lengths in the optimizing space
+    net_M - mapping network to determine the boundaries of the "w" or "w+noise" space
+    """
+
+    def w_boundaries(size=int(10e6)):
+        """
+        size - amount of generated noise (the more, the more accurately the [min, max] range is determined)
+        """
+        with torch.no_grad():
+            w = net_M((upper - lower) * torch.rand(size, var_shapes[0]) + lower)
+            wl, wu = w.min().item(), w.max().item()
+            return wl, wu
+
+    if opt_space == "z" or opt_space == "z+noise":
+        zl, zu = lower, upper
+        return zl, zu
+
+    elif opt_space == "w":
+        wl, wu = w_boundaries()
+        return wl, wu
+
+    elif opt_space == "w+noise":
+        wl, wu = w_boundaries()
+        wnl = var_shapes[0] * [wl] + np.sum(var_shapes[1:]) * [lower]
+        wnu = var_shapes[0] * [wu] + np.sum(var_shapes[1:]) * [upper]
+        return wnl, wnu
+
+
+def decompose_var(var, shapes):
+    """
+    var - flat array, which should be decomposed into arrays of different shapes
+    shapes - target shapes for decompose
+    """
+    batch_size = var.shape[0]
+    lengths = [np.prod(shape) // batch_size for shape in shapes]  # not including batch_size
+    decomposed_var = []
+    shift = 0
+    for shape, length in zip(shapes, lengths):
+        decomposed_var.append(var[:, shift:length + shift].reshape(shape))
+        shift += length
+    return decomposed_var
 
 
 def f1(x):
-    return torch.sum(x, dim=(1, 2, 3, 4)) / (x.shape[2] * x.shape[3] * x.shape[4])
+    return torch.sum(x, dim=(1, 2, 3, 4)) / np.prod(x.shape[2:])
 
 
 def f2(x):
@@ -21,8 +83,9 @@ def f2(x):
 
 
 class OptimalDesign(Problem):
-    def __init__(self, net_M, net_G, n_var, n_obj, n_ieq_constr, zl, zu):
+    def __init__(self, batch_size, net_M, net_G, n_var, n_obj, n_ieq_constr, zl, zu, opt_space):
         """
+        batch_size - the number of parallel calculations in optimization space
         net_M - mapping network
         net_G - generator network
         n_var - number of variables
@@ -30,38 +93,67 @@ class OptimalDesign(Problem):
         n_ieq_constr - number of inequality constraints
         zl - lower bound for the variables
         zu - upper bound for the variables
+        opt_space - optimization space, either 'z' or 'z+noise' or 'w or 'w+noise'
         """
         super().__init__(n_var=n_var, n_obj=n_obj, n_ieq_constr=n_ieq_constr, xl=zl, xu=zu)
+        self.batch_size = batch_size
         self.net_M = net_M
         self.net_G = net_G
-        self.n_blocks = self.net_G.n_blocks
-        self.init_const_shape = np.array(self.net_G.initial_constant.shape[2:])
+        self.n_blocks = net_G.n_blocks
+        self.init_const_shape = np.array(net_G.initial_constant.shape[2:])
         self.device = next(net_M.parameters()).device
+        self.opt_space = opt_space
+        if opt_space in ["z", "w"]:
+            self.zero_noise = generate_noise(batch_size, self.n_blocks, device=self.device, zero=True)
+        self.noise_shapes = [i.shape for i in generate_noise(batch_size, self.n_blocks, zero=True)]
 
-    def _evaluate(self, z, out, *args, **kwargs):
+    def z_evaluate(self, z):
         with torch.no_grad():
             z = [torch.from_numpy(z).to(device=self.device, dtype=torch.float32)]
             w = [self.net_M(z_i) for z_i in z]
             w = mixing_regularization(w, self.n_blocks)
-            noise = generate_noise(z[0].shape[0], self.n_blocks, self.init_const_shape, self.device)
-            x = self.net_G(w, noise)
+            x = self.net_G(w, self.zero_noise)
+        return x
 
+    def w_evaluate(self, w):
+        with torch.no_grad():
+            w = [torch.from_numpy(w).to(device=self.device, dtype=torch.float32)]
+            w = mixing_regularization(w, self.n_blocks)
+            x = self.net_G(w, self.zero_noise)
+        return x
+
+    def w_noise_evaluate(self, w_noise):
+        with torch.no_grad():
+            w_noise = torch.from_numpy(w_noise).to(device=self.device, dtype=torch.float32)
+            w_noise = decompose_var(w_noise, [[100, 64]] + self.noise_shapes) # TODO: добавить в аргументы нормальные shape и разобраться с утечкой памяти
+            w = mixing_regularization([w_noise[0]], self.n_blocks)
+            noise = w_noise[1:]
+            x = self.net_G(w, noise)
+        return x
+
+    def _evaluate(self, z, out, *args, **kwargs):
+        if self.opt_space == "z":
+            x = self.z_evaluate(z)
+        elif self.opt_space == "w":
+            x = self.w_evaluate(z)
+        elif self.opt_space == "w+noise":
+            x = self.w_noise_evaluate(z)
         x = torch.where(x >= 0, 1., -1.) * 0.5 + 0.5
         f1_value = f1(x).cpu().numpy()
         g1 = -f1_value
         g2 = f1_value - 1
-        #g1 = -f1(x)
-        #g2 = f1(x) - 1
-        #g3 = -f2(x)
+        # g1 = -f1(x)
+        # g2 = f1(x) - 1
+        # g3 = -f2(x)
 
         out["F"] = [f1_value]
         out["G"] = [g1, g2]
-        #out["F"] = [f1(x), f2(x)]
-        #out["G"] = [g1, g2, g3]
+        # out["F"] = [f1(x), f2(x)]
+        # out["G"] = [g1, g2, g3]
 
 
-if __name__ == "__main__":
-    zl, zu = -5, 5
+def main():
+    batch_size = 100
     d_latent = 64
     n_layers = 4
     lr_multiplier = 0.01
@@ -70,19 +162,104 @@ if __name__ == "__main__":
     max_features = 64
     activation = nn.Tanh()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net_M = MappingNetwork(d_latent, n_layers, lr_multiplier).to(device).eval()
-    net_G = Generator(log_resolution, d_latent, n_features, max_features, activation=activation).to(device).eval()
+    net_M = MappingNetwork(d_latent, n_layers, lr_multiplier).eval()
+    net_G = Generator(log_resolution, d_latent, n_features, max_features, activation=activation).eval()
 
-    ckpt_path = r"../checkpoint/008000.pt"
-    checkpoint = torch.load(ckpt_path)
+    ckpt_path = r"../checkpoint/009500.pt"
+    checkpoint = torch.load(ckpt_path, map_location=torch.device("cpu"))
     net_M.load_state_dict(checkpoint["net_M_ema"])
     net_G.load_state_dict(checkpoint["net_G_ema"])
 
-    problem = OptimalDesign(net_M=net_M, net_G=net_G, n_var=d_latent, n_obj=1, n_ieq_constr=2, zl=zl, zu=zu)
+    opt_space = "w+noise"
+    if opt_space == "z" or opt_space == "w":
+        n_var = d_latent
+        lower_bound, upper_bound = get_boundaries(opt_space, net_M=net_M)
+    elif opt_space == "z+noise" or opt_space == "w+noise":
+        noise = generate_noise(1, net_G.n_blocks, zero=True)
+        noise_shapes = [np.prod(list(i.shape)) for i in noise]
+        # noise_shapes[0] //= 2  # the first generator block needs only one noise
+        var_shapes = [d_latent] + noise_shapes
+        n_var = np.sum(var_shapes)
+        lower_bound, upper_bound = get_boundaries(opt_space, var_shapes=var_shapes, net_M=net_M)
 
-    sampling = LHS()
-    algorithm = NSGA2(pop_size=128, sampling=sampling)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    net_M = net_M.to(device)
+    net_G = net_G.to(device)
+
+    problem = OptimalDesign(
+        batch_size=batch_size,
+        net_M=net_M,
+        net_G=net_G,
+        n_var=n_var,
+        n_obj=1,
+        n_ieq_constr=2,
+        zl=lower_bound,
+        zu=upper_bound,
+        opt_space=opt_space,
+    )
+
+    sampling = LHS(iterations=1)
+    algorithm = NSGA2(pop_size=batch_size, sampling=sampling)
+
+    res = minimize(problem, algorithm, termination=("n_gen", 10), verbose=True, seed=42)
+    print("Threads:", res.exec_time)
+
+    plt.scatter(res.F[:, 0], res.F[:, 1], s=30, facecolors="none", edgecolors="blue")
+    plt.title("Objective Space")
+    plt.xlabel("f1")
+    plt.ylabel("f2")
+    plt.show()
+
+
+if __name__ == "__main__":
+    #main()
+    batch_size = 100
+    d_latent = 64
+    n_layers = 4
+    lr_multiplier = 0.01
+    log_resolution = 6
+    n_features = 8
+    max_features = 64
+    activation = nn.Tanh()
+
+    net_M = MappingNetwork(d_latent, n_layers, lr_multiplier).eval()
+    net_G = Generator(log_resolution, d_latent, n_features, max_features, activation=activation).eval()
+
+    ckpt_path = r"../checkpoint/009500.pt"
+    checkpoint = torch.load(ckpt_path, map_location=torch.device("cpu"))
+    net_M.load_state_dict(checkpoint["net_M_ema"])
+    net_G.load_state_dict(checkpoint["net_G_ema"])
+
+    opt_space = "w+noise"
+    if opt_space == "z" or opt_space == "w":
+        n_var = d_latent
+        lower_bound, upper_bound = get_boundaries(opt_space, net_M=net_M)
+    elif opt_space == "z+noise" or opt_space == "w+noise":
+        noise = generate_noise(1, net_G.n_blocks, zero=True)
+        noise_shapes = [np.prod(list(i.shape)) for i in noise]
+        # noise_shapes[0] //= 2  # the first generator block needs only one noise
+        var_shapes = [d_latent] + noise_shapes
+        n_var = np.sum(var_shapes)
+        lower_bound, upper_bound = get_boundaries(opt_space, var_shapes=var_shapes, net_M=net_M)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    net_M = net_M.to(device)
+    net_G = net_G.to(device)
+
+    problem = OptimalDesign(
+        batch_size=batch_size,
+        net_M=net_M,
+        net_G=net_G,
+        n_var=n_var,
+        n_obj=1,
+        n_ieq_constr=2,
+        zl=lower_bound,
+        zu=upper_bound,
+        opt_space=opt_space,
+    )
+
+    sampling = LHS(iterations=1)
+    algorithm = NSGA2(pop_size=batch_size, sampling=sampling)
 
     res = minimize(problem, algorithm, termination=("n_gen", 10), verbose=True, seed=42)
     print("Threads:", res.exec_time)

@@ -88,7 +88,7 @@ def weights_ema(model1, model2, decay=0.999):
         par1[k].data.mul_(decay).add_(par2[k].data, alpha=1 - decay)
 
 
-def generate_noise(batch_size, n_blocks, init_const_shape, device):
+def generate_noise(batch_size, n_blocks, init_const_shape=np.array([4, 4, 4]), device=None, zero=False):
     """
     batch_size - batch size
     n_blocks - number of generator blocks
@@ -99,17 +99,15 @@ def generate_noise(batch_size, n_blocks, init_const_shape, device):
     noise = []
     for i in range(n_blocks):
         # Different noise shape for each block
-        shape = (batch_size, 1) + tuple(init_const_shape * 2 ** i)
-        noise.append(
-            (
-                torch.randn(shape, device=device),
-                torch.randn(shape, device=device)
-            )
-        )
+        shape = (2, batch_size, 1) + tuple(init_const_shape * 2 ** i)
+        if zero:
+            noise.append(torch.zeros(shape, device=device))
+        else:
+            noise.append(torch.randn(shape, device=device))
     return noise
 
 
-def generate_z(batch_size, d_latent, style_mixing_prob, device):
+def generate_z(batch_size, d_latent, style_mixing_prob, device=None):
     """
     batch_size - batch size
     d_latent - the size of the latent space
@@ -119,12 +117,11 @@ def generate_z(batch_size, d_latent, style_mixing_prob, device):
 
     if style_mixing_prob > 0 and random.random() < style_mixing_prob:
         # Generate two latent codes
-        return [torch.randn(batch_size, d_latent, device=device),
-                torch.randn(batch_size, d_latent, device=device)]
+        return torch.randn((2, batch_size, d_latent), device=device)
 
     else:
         # Generate one latent code
-        return [torch.randn(batch_size, d_latent, device=device)]
+        return torch.randn((1, batch_size, d_latent), device=device)
 
 
 def mixing_regularization(w, n_blocks):
