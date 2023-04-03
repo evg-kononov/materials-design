@@ -88,11 +88,12 @@ def weights_ema(model1, model2, decay=0.999):
         par1[k].data.mul_(decay).add_(par2[k].data, alpha=1 - decay)
 
 
-def generate_noise(batch_size, n_blocks, init_const_shape=np.array([4, 4, 4]), device=None, zero=False):
+def generate_noise(batch_size, n_blocks, init_const_shape=np.array([4, 4, 4]), device=None, blocks_zero_noise=None):
     """
     batch_size - batch size
     n_blocks - number of generator blocks
     init_const_shape - initialization constant shape: [height, width, deepth]
+    blocks_zero_noise - generator blocks where noise is zero
     """
 
     # Generate the noise tuple for each block
@@ -100,7 +101,7 @@ def generate_noise(batch_size, n_blocks, init_const_shape=np.array([4, 4, 4]), d
     for i in range(n_blocks):
         # Different noise shape for each block
         shape = (2, batch_size, 1) + tuple(init_const_shape * 2 ** i)
-        if zero:
+        if blocks_zero_noise is not None and i in blocks_zero_noise:
             noise.append(torch.zeros(shape, device=device))
         else:
             noise.append(torch.randn(shape, device=device))
