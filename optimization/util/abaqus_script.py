@@ -129,4 +129,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         calc_young(sys.argv[1], sys.argv[2])
     else:
-        print("Add the inp_paths argument!")
+        print("Add the args!")
