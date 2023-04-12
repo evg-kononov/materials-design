@@ -336,7 +336,7 @@ if __name__ == "__main__":
     algorithm = NSGA2(pop_size=batch_size, sampling=sampling)
 
     res = minimize(problem, algorithm, termination=("n_gen", 10), verbose=True, seed=42)
-    print("Threads:", res.exec_time)
+    print("Optimization runtime:", res.exec_time)
 
     generate(net_M, net_G, res.X, None, opt_space, blocks_zero_noise)
 

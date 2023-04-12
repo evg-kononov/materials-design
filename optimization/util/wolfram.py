@@ -21,7 +21,7 @@ async def main(x, poolsize):
             tasks.append(task)
         await asyncio.wait(tasks)
 
-        print('Done after %.02fs, using up to %i kernels.'
+        print("Done inp creation after %.02fs, using up to %i kernels."
               % (time.perf_counter() - start, len(pool)))
 
 
