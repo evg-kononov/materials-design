@@ -1,14 +1,15 @@
+import os
 import time
 import asyncio
 import shutil
 import numpy as np
+
 from wolframclient.evaluation import WolframEvaluatorPool
 from wolframclient.language import wl
-
 from expressions import expr
 
 
-async def main():
+async def main(x, poolsize):
     async with WolframEvaluatorPool(poolsize=poolsize) as pool:
         start = time.perf_counter()
 
@@ -16,10 +17,6 @@ async def main():
         await asyncio.wait(tasks)
         tasks = []
         for i, x_i in enumerate(x):
-            # try:
-            #     task = pool.evaluate(wl.Global.toFEM(x_i, i))
-            # except:
-            #     pass
             task = pool.evaluate(wl.Global.toFEM(x_i, i))
             tasks.append(task)
         await asyncio.wait(tasks)
@@ -28,15 +25,21 @@ async def main():
               % (time.perf_counter() - start, len(pool)))
 
 
+def inp_preparation(x, poolsize):
+    try:
+        os.mkdir("inps")
+    except IOError as ex:
+        shutil.rmtree("inps")
+        os.mkdir("inps")
+        print(ex)
+
+    asyncio.run(main(x, poolsize))
+
+
 if __name__ == "__main__":
     poolsize = 5
-    x = np.load("val_cuboids_normal.npy")[1:12:2]
-    # x = np.random.randint(low=0, high=2, size=(4, 32, 32, 32))
+    # x = np.load("val_cuboids_normal.npy")[:10]
+    x = np.random.randint(low=0, high=2, size=(4, 32, 32, 32))
     x = x.astype(np.float32)
 
-    asyncio.run(main())
-
-    # try:
-    #     shutil.rmtree("samples")
-    # except IOError as ex:
-    #     print(ex)
+    inp_preparation(x, poolsize)

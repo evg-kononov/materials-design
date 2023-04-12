@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+
 from lhs import LHS
 from pymoo.core.problem import Problem
 from pymoo.algorithms.moo.nsga2 import NSGA2
@@ -8,6 +9,8 @@ from pymoo.optimize import minimize
 from torch import nn
 from network import MappingNetwork, Generator, StyleBlock
 from training_loop import generate_noise, mixing_regularization, generate_z, data_plot
+
+from util.wolfram import inp_preparation
 
 
 def print_noise_scales(net_G):

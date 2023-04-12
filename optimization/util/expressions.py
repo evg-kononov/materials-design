@@ -200,11 +200,12 @@ toFEM[x_,num_]:=(
     If[twophaseflag,exporttext2phase=Join[HeadingText,nodestext,ElementText,elements1text,elements2text,Set1Text,Set2Text,Set2X0Text,Set2XAText,Set2Y0Text,Set2YAText,Set2Z0Text,Set2ZAText,Set2YBottomText,Set2YTopText,Set2XTopText,Set2XBottomText,Set2ZTopText,Set2ZBottomText,SectionText,EndPartText,EndPartText,AssemblyText,MiscTextPorous];];
     
     
-    CreateDirectory[directoryname];
-    SetDirectory[directoryname];
+    (*CreateDirectory[directoryname];
+    SetDirectory[directoryname];*)
     
     
     porousname=StringJoin["structure_"<>ToString[uniquenumber],"_porous_ZLoad.inp"];
+    porousname=FileNameJoin[{"inps",porousname}];
     Export[porousname,exporttextporous,"Text"];
     
     
