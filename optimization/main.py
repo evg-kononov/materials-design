@@ -1,5 +1,9 @@
+import re
+import os
+import sys
 import torch
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 
 from lhs import LHS
@@ -51,7 +55,7 @@ def generate(net_M, net_G, var, var_shapes, opt_space, block_zero_noise=None):
 
 def get_boundaries(opt_space, lower=-3, upper=3, var_shapes=None, net_M=None):
     """
-    opt_space - optimization space, either 'z' or 'z+noise' or 'w or 'w+noise'
+    opt_space - optimization space, either "z" or "z+noise" or "w or "w+noise"
     lower - base lower bound for the variables (usually min of N(0, 1))
     upper - base upper bound for the variables (usually max of N(0, 1))
     var_shapes - variable lengths in the optimizing space
@@ -98,11 +102,33 @@ def decompose_var(var, shapes):
 
 
 def f1(x):
-    return torch.sum(x, dim=(1, 2, 3, 4)) / np.prod(x.shape[2:])
+    result = torch.sum(x, dim=(1, 2, 3, 4)) / np.prod(x.shape[2:])
+    return result.cpu().numpy()
 
 
 def f2(x):
-    return torch.sum(x, dim=(1, 2, 3, 4)) - torch.sum(x, dim=(1, 2, 3, 4)) ** 2
+    # Convert a voxel object into a finite element model
+    inp_paths = inp_preparation(x, poolsize=10)
+    load_path = "inp_paths.txt"
+    with open(load_path, "w+") as f:
+        for inp_path in inp_paths:
+            f.write(inp_path + "\n")
+
+    # Define the file path to save the young modules and run the Abaqus
+    save_path = "young_modules.csv"
+    abaqus = "abaqus"
+    if "ABAQUS_BAT_PATH" in os.environ.keys():
+        abaqus = os.environ["ABAQUS_BAT_PATH"]
+    abaqus_script_path = "util/abaqus_script.py"
+    args = " ".join([load_path, save_path])
+    os.system(f"{abaqus} cae noGUI={abaqus_script_path} -- {args}")
+
+    # Load the saved young modules and return them
+    young_modules = pd.read_csv(save_path, header=None, names=["inp", "young_module"])
+    young_modules["inp"] = young_modules["inp"].apply(lambda x: int(re.findall(r"\d+", x)[0]))
+    young_modules_dict = {key: value for key, value in zip(young_modules["inp"], young_modules["young_module"])}
+    result = np.array([young_modules_dict.get(i, 0.) for i in range(len(x))])
+    return result
 
 
 class OptimalDesign(Problem):
@@ -116,7 +142,7 @@ class OptimalDesign(Problem):
         n_ieq_constr - number of inequality constraints
         zl - lower bound for the variables
         zu - upper bound for the variables
-        opt_space - optimization space, either 'z' or 'z+noise' or 'w or 'w+noise'
+        opt_space - optimization space, either "z" or "z+noise" or "w or "w+noise"
         blocks_zero_noise - generator blocks where noise is zero
         """
         super().__init__(n_var=n_var, n_obj=n_obj, n_ieq_constr=n_ieq_constr, xl=zl, xu=zu)
@@ -184,7 +210,7 @@ class OptimalDesign(Problem):
         elif self.opt_space == "w+noise":
             x = self.w_noise_evaluate(z)
         x = torch.where(x >= 0, 1., -1.) * 0.5 + 0.5
-        f1_value = f1(x).cpu().numpy()
+        f1_value = f1(x)
         g1 = -f1_value
         g2 = f1_value - 1
         # g1 = -f1(x)

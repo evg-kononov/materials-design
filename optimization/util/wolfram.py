@@ -25,19 +25,21 @@ async def main(x, poolsize):
               % (time.perf_counter() - start, len(pool)))
 
 
-def inp_preparation(x, poolsize):
+def inp_preparation(x, poolsize, save_path="inps"):
     try:
-        os.mkdir("inps")
+        os.mkdir(save_path)
     except IOError as ex:
-        shutil.rmtree("inps")
-        os.mkdir("inps")
+        shutil.rmtree(save_path)
+        os.mkdir(save_path)
         print(ex)
 
     asyncio.run(main(x, poolsize))
+    return [os.path.join(save_path, inp) for inp in os.listdir(save_path)]
 
 
 if __name__ == "__main__":
-    poolsize = 5
+    print("WOLFRAM TEST")
+    poolsize = 2
     # x = np.load("val_cuboids_normal.npy")[:10]
     x = np.random.randint(low=0, high=2, size=(4, 32, 32, 32))
     x = x.astype(np.float32)
