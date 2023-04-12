@@ -14,7 +14,9 @@ from torch import nn
 from network import MappingNetwork, Generator, StyleBlock
 from training_loop import generate_noise, mixing_regularization, generate_z, data_plot
 
-from util.wolfram import inp_preparation
+#from util import expressions
+#from util import wolfram
+
 
 
 def print_noise_scales(net_G):
