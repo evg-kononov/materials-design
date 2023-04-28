@@ -23,6 +23,7 @@ import displayGroupOdbToolset as dgo
 import connectorBehavior
 
 import sys
+import os
 
 # --------------------------------------------------------------------
 #   Name of Modules
@@ -50,7 +51,8 @@ def calc_young(load_path, save_path):
     load_path - file path where the inp file paths are stored
     save_path - file path where to save the joung modules
     """
-    with open('inp_paths.txt') as f:
+
+    with open(load_path) as f:
         inp_paths = f.read().splitlines()
     with open(save_path, "w+") as f:
         for idx, inp_path in enumerate(inp_paths):
@@ -59,9 +61,10 @@ def calc_young(load_path, save_path):
             print " "
             job_name = "Jobs"
             inp_path = inp_path[:-4]  # [:-4] - обрезает ".inp"
-            print(inp_path)
+            file_name = inp_path.split("\\")[-1]
+            print file_name + ".inp"
 
-            mdb.ModelFromInputFile(name=inp_path, inputFileName=inp_path + ".inp")
+            mdb.ModelFromInputFile(name=file_name, inputFileName=inp_path + ".inp")
 
             """
             #--------------------------------------------------------------------
@@ -89,9 +92,9 @@ def calc_young(load_path, save_path):
             mdb.models[inp_path].parts[NameOfPart].Set(nodes=nodes1, name="Side Z_B") #точки на торце Z_Max
             """
 
-            a = mdb.models[inp_path].rootAssembly
+            a = mdb.models[file_name].rootAssembly
             session.viewports["Viewport: 1"].setValues(displayedObject=a)
-            mdb.Job(name=job_name, model=inp_path, description="",
+            mdb.Job(name=job_name, model=file_name, description="",
                     type=ANALYSIS, atTime=None, waitMinutes=0, waitHours=0, queue=None,
                     memory=90, memoryUnits=PERCENTAGE, getMemoryFromAnalysis=True,
                     explicitPrecision=SINGLE, nodalOutputPrecision=SINGLE, echoPrint=OFF,
@@ -102,7 +105,7 @@ def calc_young(load_path, save_path):
             mdb.jobs[job_name].waitForCompletion()
 
             # Открываем посчитавшийся .odb
-            odb = session.openOdb(name=work_directory + job_name + ".odb")
+            odb = session.openOdb(name=job_name + ".odb")
             session.viewports["Viewport: 1"].setValues(displayedObject=odb)
 
             xyList = xyPlot.xyDataListFromField(odb=odb, outputPosition=NODAL, variable=((
@@ -127,6 +130,6 @@ def calc_young(load_path, save_path):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        calc_young(sys.argv[1], sys.argv[2])
+        calc_young(sys.argv[-2], sys.argv[-1])
     else:
         print("Add the args!")

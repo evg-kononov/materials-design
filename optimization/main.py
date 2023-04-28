@@ -15,7 +15,7 @@ from network import MappingNetwork, Generator, StyleBlock
 from training_loop import generate_noise, mixing_regularization, generate_z, data_plot
 
 #from util import expressions
-#from util import wolfram
+from util.wolfram import inp_preparation
 
 
 
