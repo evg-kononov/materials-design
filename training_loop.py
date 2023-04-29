@@ -14,8 +14,7 @@ from distributed import (
 )
 
 from inception_v3.inception_v3 import Inception3 as MODEL
-
-# from fid_score import *
+from fid_score import *
 
 try:
     import wandb
@@ -32,7 +31,7 @@ class Identity(nn.Module):
         return x
 
 
-def data_plot(data, param=1., cmap='twilight', alpha=1, figsize=(7, 7)):
+def data_plot(data, param=1., cmap="twilight", alpha=1, figsize=(7, 7)):
     # Create the x, y, and z coordinate arrays.  We use 
     # numpy's broadcasting to do all the hard work for us.
     # We could shorten this even more by using np.meshgrid.
@@ -52,7 +51,7 @@ def data_plot(data, param=1., cmap='twilight', alpha=1, figsize=(7, 7)):
 
     # Do the plotting in a single call.
     fig = plt.figure(figsize=figsize)
-    ax = fig.add_subplot(projection='3d')
+    ax = fig.add_subplot(projection="3d")
     ax.scatter(x.ravel()[mask],
                y.ravel()[mask],
                z.ravel()[mask],
@@ -154,32 +153,33 @@ def train(
         net_D,
         G_opt,
         D_opt,
-        batch_size,  # Batch size during training
-        total_steps,  # Number of steps to learn
-        plot_freq,  # Sample plot frequency
-        save_freq,  # Models save frequency
-        device,  # Where the calculations are made
-        initial_step=1,  # Initialization step
-        use_wandb=False,  # Use weights and biases logging
-        r1_gamma=10.,
-        # Weight of the r1 regularization (γ ∈ [γ0/5, γ0 · 5], γ0 = 0.0002 · N/M, where N = w × h is the number of pixels and M is the minibatch size)
+        batch_size,             # Batch size during training
+        total_steps,            # Number of steps to learn
+        plot_freq,              # Sample plot frequency
+        save_freq,              # Models save frequency
+        device,                 # Where the calculations are made
+        initial_step=1,         # Initialization step
+        use_wandb=False,        # Use weights and biases logging
+        r1_gamma=10.,           # Weight of the r1 regularization (γ ∈ [γ0/5, γ0 · 5], γ0 = 0.0002 · N/M, where N = w × h is the number of pixels and M is the minibatch size)
+        path_lenght_use=True,   # Whether to use path lenght regularization
         path_lenght_beta=0.99,  # Weight of the exponentional moving average in path lenght regularization
         path_lenght_weight=2.,  # Path lenght regularization constant
-        pl_exp_sum_a=None,  # Preserved state for continued learning
-        pl_steps=None,  # Preserved state for continued learning
+        pl_exp_sum_a=None,      # Preserved state for continued learning
+        pl_steps=None,          # Preserved state for continued learning
         style_mixing_prob=0.9,  # Probability of latent code mixing
-        G_reg_interval=4,  # How often the perform regularization for G? Ignored if lazy_regularization=False
-        D_reg_interval=16,  # How often the perform regularization for D? Ignored if lazy_regularization=False
-        WGAN_GP=False,  # Whether to use the WGAN-GP
-        gp_weight=10,  # Weight of gradient penalty
-        ema_decay=0.999,  # Exponentional moving average decay of weights
-        calc_fid=True,  # Whether to calculate FID
-        fid_samples=1000,  # Number of generations for FID calculation
+        G_reg_interval=4,       # How often to perform regularization for G? Ignored if lazy_regularization=False
+        D_reg_interval=16,      # How often to perform regularization for D? Ignored if lazy_regularization=False
+        WGAN_GP=False,          # Whether to use the WGAN-GP
+        gp_weight=10,           # Weight of gradient penalty
+        ema_decay=0.999,        # Exponentional moving average decay of weights
+        calc_fid=True,          # Whether to calculate FID
+        fid_samples=1000,       # Number of generations for FID calculation
+        distributed=False,
 ):
     if get_rank() == 0 and calc_fid:
-        inception_state_dict_path = r'C:\Users\Evgeniy\Jupyter\Work\stylegan2\inception_v3\checkpoint\Inception3_000007.pt'
+        inception_state_dict_path = r"./inception_v3/checkpoint/Inception3_000007.pt"
         inception = MODEL().to(device)
-        inception.load_state_dict(torch.load(inception_state_dict_path)['net'])
+        inception.load_state_dict(torch.load(inception_state_dict_path)["net"])
         inception.AuxLogits = None
         inception.dropout = Identity()
         inception.fc = Identity()
@@ -189,13 +189,24 @@ def train(
     if get_rank() == 0:
         pbar = tqdm(pbar, initial=initial_step, dynamic_ncols=True)
 
-    used_tanh = isinstance(net_G.activation, type(nn.Tanh()))
-    n_blocks = net_G.n_blocks
-    init_const_shape = np.array(net_G.initial_constant.shape[2:])
+    if distributed:
+        net_M_module = net_M.module
+        net_G_module = net_G.module
+        net_D_module = net_D.module
+
+    else:
+        net_M_module = net_M
+        net_G_module = net_G
+        net_D_module = net_D
+
+    used_tanh = isinstance(net_G_module.activation, type(nn.Tanh()))
+    n_blocks = net_G_module.n_blocks
+    init_const_shape = np.array(net_G_module.initial_constant.shape[2:])
     d_latent = list(net_M.parameters())[0].shape[0]
     D_r1_loss = GradientPenalty(gamma=torch.tensor(r1_gamma).to(device))
     G_path_lenght_loss = PathLenghtPenalty(beta=torch.tensor(path_lenght_beta).to(device),
                                            weight=torch.tensor(path_lenght_weight).to(device))
+
     if pl_exp_sum_a and pl_steps is not None:
         G_path_lenght_loss.exp_sum_a = pl_exp_sum_a.to(device)
         G_path_lenght_loss.steps = pl_steps.to(device)
@@ -281,7 +292,7 @@ def train(
         G_opt.step()
 
         # Regularization (lazy) G every "G_reg_interval" steps
-        if step % G_reg_interval == 0 and WGAN_GP == False:
+        if step % G_reg_interval == 0 and WGAN_GP == False and path_lenght_use:
             # Generate two z with probability "style_mixing_prob"path_lenght_loss
             z = generate_z(batch_size, d_latent, style_mixing_prob, device)
             # Map z into a style
@@ -300,18 +311,18 @@ def train(
             pl_exp_sum = reduce_sum(pl_exp_sum).item() / get_world_size()
             G_path_lenght_loss.exp_sum_a = pl_exp_sum
 
-        weights_ema(net_M_ema, net_M, ema_decay)
-        weights_ema(net_G_ema, net_G, ema_decay)
+        weights_ema(net_M_ema, net_M_module, ema_decay)
+        weights_ema(net_G_ema, net_G_module, ema_decay)
 
         loss_dict = {
             "G_loss": G_loss,
             "D_loss": D_loss,
             "real_score": real_score,
             "fake_score": fake_score,
-            "r1_loss": r1_loss,
-            "pl_loss": pl_loss,
-            "pl_exp_sum": pl_exp_sum,
-            "pl_norm": pl_norm,
+            "r1_loss": torch.tensor(r1_loss, device=device),
+            "pl_loss": torch.tensor(pl_loss, device=device),
+            "pl_exp_sum": torch.tensor(pl_exp_sum, device=device),
+            "pl_norm": torch.tensor(pl_norm, device=device),
         }
 
         loss_reduced = reduce_loss_dict(loss_dict)
@@ -328,12 +339,12 @@ def train(
 
         if get_rank() == 0:
             if WGAN_GP:
-                pbar.set_description((f'D: {D_loss:.4f}; G: {G_loss:.4f}; '))
+                pbar.set_description((f"D: {D_loss:.4f}; G: {G_loss:.4f}; "))
             else:
                 pbar.set_description(
                     (
-                        f'D: {D_loss:.4f}; G: {G_loss:.4f}; r1: {r1_loss:.4f}; '
-                        f'pl: {pl_loss:.4f}; pl_exp_sum: {pl_exp_sum:.4f}; pl_norm: {pl_norm:.4f}; '
+                        f"D: {D_loss:.4f}; G: {G_loss:.4f}; r1: {r1_loss:.4f}; "
+                        f"pl: {pl_loss:.4f}; pl_exp_sum: {pl_exp_sum:.4f}; pl_norm: {pl_norm:.4f}; "
                     )
                 )
 
@@ -341,24 +352,24 @@ def train(
                 if WGAN_GP:
                     wandb.log(
                         {
-                            'Generator': G_loss,
-                            'Discriminator': D_loss,
-                            'Real Score': real_score,
-                            'Fake Score': fake_score,
+                            "Generator": G_loss,
+                            "Discriminator": D_loss,
+                            "Real Score": real_score,
+                            "Fake Score": fake_score,
                         },
                         step=step,
                     )
                 else:
                     wandb.log(
                         {
-                            'Generator': G_loss,
-                            'Discriminator': D_loss,
-                            'R1': r1_loss,
-                            'Path Length Regularization': pl_loss,
-                            'Path Lenght Exponential Sum': pl_exp_sum,
-                            'Path Lenght Norm': pl_norm,
-                            'Real Score': real_score,
-                            'Fake Score': fake_score,
+                            "Generator": G_loss,
+                            "Discriminator": D_loss,
+                            "R1": r1_loss,
+                            "Path Length Regularization": pl_loss,
+                            "Path Lenght Exponential Sum": pl_exp_sum,
+                            "Path Lenght Norm": pl_norm,
+                            "Real Score": real_score,
+                            "Fake Score": fake_score,
                         },
                         step=step,
                     )
@@ -387,36 +398,36 @@ def train(
                         fig_75 = data_plot(sample, param=0.75)
                         plt.close(fig_75)
 
-                        fig_25.savefig(f'sample/{str(step).zfill(6)}_25.png')
-                        fig_50.savefig(f'sample/{str(step).zfill(6)}_50.png')
-                        fig_75.savefig(f'sample/{str(step).zfill(6)}_75.png')
+                        fig_25.savefig(f"sample/{str(step).zfill(6)}_25.png")
+                        fig_50.savefig(f"sample/{str(step).zfill(6)}_50.png")
+                        fig_75.savefig(f"sample/{str(step).zfill(6)}_75.png")
 
-                        # wandb.log({'sample_25': wandb.Image(fig_25)}, step=step)
-                        # wandb.log({'sample_50': wandb.Image(fig_50)}, step=step)
-                        # wandb.log({'sample_75': wandb.Image(fig_75)}, step=step)
+                        # wandb.log({"sample_25": wandb.Image(fig_25)}, step=step)
+                        # wandb.log({"sample_50": wandb.Image(fig_50)}, step=step)
+                        # wandb.log({"sample_75": wandb.Image(fig_75)}, step=step)
                     except Exception as ex:
                         print(ex)
 
             if step % save_freq == 0:
                 save_dict = {
-                    'pl_exp_sum_a': G_path_lenght_loss.exp_sum_a.cpu(),
-                    'pl_steps': G_path_lenght_loss.steps.cpu(),
-                    'step': step,
-                    'net_M': net_M.state_dict(),
-                    'net_M_ema': net_M_ema.state_dict(),
-                    'net_G': net_G.state_dict(),
-                    'net_G_ema': net_G_ema.state_dict(),
-                    'net_D': net_D.state_dict(),
-                    'G_opt': G_opt.state_dict(),
-                    'D_opt': D_opt.state_dict()
+                    "pl_exp_sum_a": G_path_lenght_loss.exp_sum_a.cpu(),
+                    "pl_steps": G_path_lenght_loss.steps.cpu(),
+                    "step": step,
+                    "net_M": net_M_module.state_dict(),
+                    "net_M_ema": net_M_ema.state_dict(),
+                    "net_G": net_G_module.state_dict(),
+                    "net_G_ema": net_G_ema.state_dict(),
+                    "net_D": net_D_module.state_dict(),
+                    "G_opt": G_opt.state_dict(),
+                    "D_opt": D_opt.state_dict()
                 }
 
                 if wandb and use_wandb:
-                    save_dict['wandb_run_id'] = wandb.run.id
+                    save_dict["wandb_run_id"] = wandb.run.id
 
                 torch.save(
                     save_dict,
-                    f'checkpoint/{str(step).zfill(6)}.pt',
+                    f"checkpoint/{str(step).zfill(6)}.pt",
                 )
 
                 if calc_fid:
@@ -424,7 +435,7 @@ def train(
                         net_M_ema.eval()
                         net_G_ema.eval()
                         fake_path = r"fakes/"
-                        real_path = r"C:\Users\Evgeniy\Jupyter\Work\stylegan2\inception_v3\inception_dataset_mu_sigma.npz"
+                        real_path = r"./inception_v3/inception_dataset_mu_sigma.npz"
 
                         try:
                             os.mkdir(fake_path)
@@ -446,5 +457,26 @@ def train(
                         fid = calculate_fid_given_paths([real_path, fake_path], batch_size, device, model=inception)
                         shutil.rmtree(fake_path)
 
+                        try:
+                            os.mkdir(fake_path)
+                        except FileExistsError:
+                            shutil.rmtree(fake_path)
+                            os.mkdir(fake_path)
+
+                        for batch in range(fid_samples // batch_size + 1):
+                            z = generate_z(batch_size, d_latent, style_mixing_prob, device)
+                            w = [net_M_ema(z_i) for z_i in z]
+                            w = mixing_regularization(w, net_G_ema.n_blocks)
+                            noise = generate_noise(batch_size, net_G_ema.n_blocks, init_const_shape, device, zero=True)
+                            fake = net_G_ema(w, noise)
+                            fake = torch.where(fake >= 0, 1., -1.).cpu().numpy()
+                            for j, cub in enumerate(fake):
+                                name = batch * batch_size + j
+                                np.save(f"{fake_path}/{name}", cub)
+
+                        fid_no_noise = calculate_fid_given_paths([real_path, fake_path], batch_size, device,
+                                                                 model=inception)
+                        shutil.rmtree(fake_path)
+
                     if wandb and use_wandb:
-                        wandb.log({'FID': fid}, step=step)
+                        wandb.log({'FID': fid, 'FID (no noise)': fid_no_noise}, step=step)
