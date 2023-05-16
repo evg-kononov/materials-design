@@ -58,21 +58,28 @@ def inp_preparation(x, poolsize, save_path="inps"):
 def f2(x):
     import pandas as pd
     import re
+    import os
     # Convert a voxel object into a finite element model
-    inp_paths = inp_preparation(x, poolsize=20)
+    #inp_paths = inp_preparation(x, poolsize=20)
+    #save_path = r"C:\Users\Evgeniy\Jupyter\Work\materials-design\optimization\util\inps"
+    save_path = r"D:\inception_dataset\inps_64_normal_0"
+    inp_paths = [os.path.join(os.path.abspath(save_path), inp) for inp in os.listdir(save_path)]
     load_path = "inp_paths.txt"
     with open(load_path, "w+") as f:
         for inp_path in inp_paths:
             f.write(inp_path + "\n")
 
     # Define the file path to save the young modules and run the Abaqus
-    save_path = "young_modules.csv"
-    abaqus = "abaqus"
-    if "ABAQUS_BAT_PATH" in os.environ.keys():
-        abaqus = os.environ["ABAQUS_BAT_PATH"]
-    abaqus_script_path = "abaqus_script.py"
-    args = " ".join([load_path, save_path])
-    os.system(f"{abaqus} cae noGUI={abaqus_script_path} -- {args}")
+    try:
+        save_path = "young_modules.csv"
+        abaqus = "abaqus"
+        if "ABAQUS_BAT_PATH" in os.environ.keys():
+            abaqus = os.environ["ABAQUS_BAT_PATH"]
+        abaqus_script_path = "abaqus_script.py"
+        args = " ".join([load_path, save_path])
+        os.system(f"{abaqus} cae script={abaqus_script_path} -- {args}")
+    except Exception as ex:
+        print(ex)
 
     # Load the saved young modules and return them
     young_modules = pd.read_csv(save_path, header=None, names=["inp", "young_module"])
@@ -87,11 +94,11 @@ if __name__ == "__main__":
     poolsize = 12
     #x = np.load("val_cuboids_normal.npy")[:20]
     # x = np.random.randint(low=0, high=2, size=(4, 32, 32, 32))
-    path = r"C:\Users\Evgeniy\Jupyter\Work\generated_cuboids\inception_dataset\train_prepared\64_normal_1.5"
+    path = r"C:\Users\Evgeniy\Jupyter\Work\generated_cuboids\inception_dataset\train_prepared\64_spheresRVE"
     x = [np.load(os.path.join(path, file)) for file in sorted(os.listdir(path), key=lambda x: int(x.split(".")[0]))]
     x = np.array(x)
     x = np.squeeze(x, axis=1)
     x = x * 0.5 + 0.5
     x = x.astype(np.float32)
 
-    inp_preparation(x, poolsize)
+    #inp_preparation(x, poolsize)
