@@ -110,27 +110,47 @@ def f1(x):
 
 def f2(x):
     # Convert a voxel object into a finite element model
-    inp_paths = inp_preparation(x, poolsize=10)
+    inp_paths = inp_preparation(x, poolsize=12)
     load_path = "inp_paths.txt"
     with open(load_path, "w+") as f:
         for inp_path in inp_paths:
             f.write(inp_path + "\n")
 
-    # Define the file path to save the young modules and run the Abaqus
+    if os.path.exists("young_modules.csv"):
+        os.remove("young_modules.csv")
+    if os.path.exists("sys_exit.txt"):
+        os.remove("sys_exit.txt")
+    start_idx = 0
+    # Define the file path to save the young modules
     save_path = "young_modules.csv"
     abaqus = "abaqus"
     if "ABAQUS_BAT_PATH" in os.environ.keys():
         abaqus = os.environ["ABAQUS_BAT_PATH"]
     abaqus_script_path = "util/abaqus_script.py"
-    args = " ".join([load_path, save_path])
-    os.system(f"{abaqus} cae noGUI={abaqus_script_path} -- {args}")
+    while True:
+        if os.path.exists("sys_exit.txt"):
+            with open("sys_exit.txt", "r+") as f:
+                start_idx = f.readline()
+                print(start_idx)
+            if start_idx == "end":
+                break
+            else:
+                start_idx = int(start_idx) + 1
+        # Run the Abaqus
+        args = " ".join([str(start_idx), load_path, save_path])
+        os.system(f"{abaqus} cae noGUI={abaqus_script_path} -- {args}")
 
     # Load the saved young modules and return them
-    young_modules = pd.read_csv(save_path, header=None, names=["inp", "young_module"])
-    young_modules["inp"] = young_modules["inp"].apply(lambda x: int(re.findall(r"\d+", x)[0]))
+    young_modules = pd.read_csv(save_path, header=None, names=["inp", "young_module", "fem_volume_fraction"])
+    young_modules["inp"] = young_modules["inp"].apply(
+        lambda x: int(re.findall(r"\d+", re.findall(r"structure_\d+", x)[0])[0])
+    )
     young_modules_dict = {key: value for key, value in zip(young_modules["inp"], young_modules["young_module"])}
-    result = np.array([young_modules_dict.get(i, 0.) for i in range(len(x))])
-    return result
+    fem_vf_dict = {key: value for key, value in zip(young_modules["inp"], young_modules["fem_volume_fraction"])}
+
+    young_modules_result = np.array([young_modules_dict.get(i, None) for i in range(len(x))])
+    fem_vf_result = np.array([fem_vf_dict.get(i, None) for i in range(len(x))])
+    return young_modules_result, fem_vf_result
 
 
 class OptimalDesign(Problem):
@@ -214,16 +234,16 @@ class OptimalDesign(Problem):
         x = torch.where(x >= 0, 1., -1.) * 0.5 + 0.5
 
         f1_value = f1(x)
+        f2_value, f2_fem_vf = f2(x)
         g1 = -f1_value
         g2 = f1_value - 1
-        # g1 = -f1(x)
-        # g2 = f1(x) - 1
-        # g3 = -f2(x)
+        g3 = -f2_value
 
-        out["F"] = [f1_value]
-        out["G"] = [g1, g2]
-        # out["F"] = [f1_value, f2_value]
-        # out["G"] = [g1, g2, g3]
+        # out["F"] = [f1_value]
+        # out["G"] = [g1, g2]
+        out["F"] = [f1_value, f2_value]
+        out["G"] = [g1, g2, g3]
+        out["fem_vf"] = f2_fem_vf
 
 
 def main():
