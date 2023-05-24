@@ -212,6 +212,7 @@ class OptimalDesign(Problem):
         elif self.opt_space == "w+noise":
             x = self.w_noise_evaluate(z)
         x = torch.where(x >= 0, 1., -1.) * 0.5 + 0.5
+
         f1_value = f1(x)
         g1 = -f1_value
         g2 = f1_value - 1
@@ -221,7 +222,7 @@ class OptimalDesign(Problem):
 
         out["F"] = [f1_value]
         out["G"] = [g1, g2]
-        # out["F"] = [f1(x), f2(x)]
+        # out["F"] = [f1_value, f2_value]
         # out["G"] = [g1, g2, g3]
 
 
@@ -291,14 +292,14 @@ if __name__ == "__main__":
     n_layers = 4
     lr_multiplier = 0.01
     log_resolution = 6
-    n_features = 8
+    n_features = 16
     max_features = 64
     activation = nn.Tanh()
 
     net_M = MappingNetwork(d_latent, n_layers, lr_multiplier).eval()
     net_G = Generator(log_resolution, d_latent, n_features, max_features, activation=activation).eval()
 
-    ckpt_path = r"../checkpoint/125_040500.pt"
+    ckpt_path = r"../checkpoint/042000_133.pt"
     checkpoint = torch.load(ckpt_path, map_location=torch.device("cpu"))
     net_M.load_state_dict(checkpoint["net_M_ema"])
     net_G.load_state_dict(checkpoint["net_G_ema"])
@@ -334,10 +335,10 @@ if __name__ == "__main__":
         blocks_zero_noise=blocks_zero_noise,
     )
 
-    sampling = LHS(device=device, iterations=20)
+    sampling = LHS(device=device, iterations=1000)
     algorithm = NSGA2(pop_size=batch_size, sampling=sampling)
 
-    res = minimize(problem, algorithm, termination=("n_gen", 10), verbose=True, seed=42)
+    res = minimize(problem, algorithm, termination=("n_gen", 2), verbose=True, seed=42)
     print("Optimization runtime:", res.exec_time)
 
     generate(net_M, net_G, res.X, None, opt_space, blocks_zero_noise)

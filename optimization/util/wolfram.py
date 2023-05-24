@@ -7,7 +7,7 @@ import numpy as np
 from wolframclient.evaluation import WolframEvaluatorPool
 from wolframclient.evaluation.kernel.kernelcontroller import WolframKernelController
 from wolframclient.language import wl
-from expressions import expr
+from util import expressions
 
 import logging
 
@@ -89,16 +89,27 @@ def f2(x):
     return result
 
 
+def f1(x):
+    result = np.sum(x, axis=(1, 2, 3)) / np.prod(x.shape[1:])
+    return result
+
+
 if __name__ == "__main__":
     print("WOLFRAM TEST")
     poolsize = 12
     #x = np.load("val_cuboids_normal.npy")[:20]
     # x = np.random.randint(low=0, high=2, size=(4, 32, 32, 32))
-    path = r"C:\Users\Evgeniy\Jupyter\Work\generated_cuboids\inception_dataset\train_prepared\64_spheresRVE"
+    path = r"C:\Users\Evgeniy\Jupyter\Work\generated_cuboids\inception_dataset\train_prepared\64_uniform_1"
     x = [np.load(os.path.join(path, file)) for file in sorted(os.listdir(path), key=lambda x: int(x.split(".")[0]))]
     x = np.array(x)
     x = np.squeeze(x, axis=1)
     x = x * 0.5 + 0.5
     x = x.astype(np.float32)
 
+    import pandas as pd
+    vf = f1(x)
+    path = r"D:\inception_dataset\train\info_64_uniform_1.csv"
+    ds = pd.read_csv(path)
+    ds["volume_fraction"] = vf
+    ds.to_csv(path)
     #inp_preparation(x, poolsize)
