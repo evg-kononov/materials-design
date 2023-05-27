@@ -16,7 +16,7 @@ from training_loop import generate_noise, mixing_regularization, generate_z, dat
 
 #from util import expressions
 from util.wolfram import inp_preparation
-
+from pymoo.core.callback import Callback
 
 
 def print_noise_scales(net_G):
@@ -151,6 +151,17 @@ def f2(x):
     young_modules_result = np.array([young_modules_dict.get(i, 0.) for i in range(len(x))])
     fem_vf_result = np.array([fem_vf_dict.get(i, 0.) for i in range(len(x))])
     return young_modules_result, fem_vf_result
+
+
+class MyCallback(Callback):
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.data["F"] = []
+
+
+    def notify(self, algorithm):
+        self.data["F"].append(algorithm.pop.get("F"))
 
 
 class OptimalDesign(Problem):
@@ -359,7 +370,7 @@ if __name__ == "__main__":
     )
 
     sampling = LHS(device=device, iterations=1000)
-    algorithm = NSGA2(pop_size=batch_size, sampling=sampling)
+    algorithm = NSGA2(pop_size=batch_size, sampling=sampling, save_history=True, callback=MyCallback())
 
     res = minimize(problem, algorithm, termination=("n_gen", 10), verbose=True, seed=42)
     print("Optimization runtime:", res.exec_time)
