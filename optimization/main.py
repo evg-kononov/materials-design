@@ -260,65 +260,6 @@ class OptimalDesign(Problem):
         """
 
 
-def main():
-    batch_size = 100
-    d_latent = 64
-    n_layers = 4
-    lr_multiplier = 0.01
-    log_resolution = 6
-    n_features = 8
-    max_features = 64
-    activation = nn.Tanh()
-
-    net_M = MappingNetwork(d_latent, n_layers, lr_multiplier).eval()
-    net_G = Generator(log_resolution, d_latent, n_features, max_features, activation=activation).eval()
-
-    ckpt_path = r"../checkpoint/009500.pt"
-    checkpoint = torch.load(ckpt_path, map_location=torch.device("cpu"))
-    net_M.load_state_dict(checkpoint["net_M_ema"])
-    net_G.load_state_dict(checkpoint["net_G_ema"])
-
-    opt_space = "w+noise"
-    if opt_space == "z" or opt_space == "w":
-        n_var = d_latent
-        lower_bound, upper_bound = get_boundaries(opt_space, net_M=net_M)
-    elif opt_space == "z+noise" or opt_space == "w+noise":
-        noise = generate_noise(1, net_G.n_blocks, zero=True)
-        noise_shapes = [np.prod(list(i.shape)) for i in noise]
-        # noise_shapes[0] //= 2  # the first generator block needs only one noise
-        var_shapes = [d_latent] + noise_shapes
-        n_var = np.sum(var_shapes)
-        lower_bound, upper_bound = get_boundaries(opt_space, var_shapes=var_shapes, net_M=net_M)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net_M = net_M.to(device)
-    net_G = net_G.to(device)
-
-    problem = OptimalDesign(
-        batch_size=batch_size,
-        net_M=net_M,
-        net_G=net_G,
-        n_var=n_var,
-        n_obj=2,
-        n_ieq_constr=3,
-        zl=lower_bound,
-        zu=upper_bound,
-        opt_space=opt_space,
-    )
-
-    sampling = LHS(iterations=1)
-    algorithm = NSGA2(pop_size=batch_size, sampling=sampling)
-
-    res = minimize(problem, algorithm, termination=("n_gen", 10), verbose=True, seed=42)
-    print("Threads:", res.exec_time)
-
-    plt.scatter(res.F[:, 0], res.F[:, 1], s=30, facecolors="none", edgecolors="blue")
-    plt.title("Objective Space")
-    plt.xlabel("f1")
-    plt.ylabel("f2")
-    plt.show()
-
-
 if __name__ == "__main__":
     # main()
     batch_size = 100
