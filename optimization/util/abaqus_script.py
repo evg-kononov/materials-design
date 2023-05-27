@@ -56,7 +56,8 @@ def calc_young(start_idx, load_path, save_path):
 
     with open(load_path) as f:
         inp_paths = f.read().splitlines()
-    for idx, inp_path in enumerate(inp_paths[start_idx + 37:]):
+    for idx, inp_path in enumerate(inp_paths[start_idx:]):
+        print(idx, inp_path)
         with open("sys_exit.txt", "w+") as f:
             f.write(str(idx + start_idx))
         print " "

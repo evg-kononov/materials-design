@@ -3,11 +3,12 @@ import time
 import asyncio
 import shutil
 import numpy as np
+import torch
 
 from wolframclient.evaluation import WolframEvaluatorPool
 from wolframclient.evaluation.kernel.kernelcontroller import WolframKernelController
 from wolframclient.language import wl
-from util import expressions
+from util.expressions import expr
 
 import logging
 

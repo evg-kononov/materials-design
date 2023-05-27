@@ -104,8 +104,8 @@ def decompose_var(var, shapes):
 
 
 def f1(x):
-    result = torch.sum(x, dim=(1, 2, 3, 4)) / np.prod(x.shape[2:])
-    return result.cpu().numpy()
+    result = np.sum(x, axis=(1, 2, 3)) / np.prod(x.shape[1:])
+    return result
 
 
 def f2(x):
@@ -148,8 +148,8 @@ def f2(x):
     young_modules_dict = {key: value for key, value in zip(young_modules["inp"], young_modules["young_module"])}
     fem_vf_dict = {key: value for key, value in zip(young_modules["inp"], young_modules["fem_volume_fraction"])}
 
-    young_modules_result = np.array([young_modules_dict.get(i, None) for i in range(len(x))])
-    fem_vf_result = np.array([fem_vf_dict.get(i, None) for i in range(len(x))])
+    young_modules_result = np.array([young_modules_dict.get(i, 0.) for i in range(len(x))])
+    fem_vf_result = np.array([fem_vf_dict.get(i, 0.) for i in range(len(x))])
     return young_modules_result, fem_vf_result
 
 
@@ -232,18 +232,21 @@ class OptimalDesign(Problem):
         elif self.opt_space == "w+noise":
             x = self.w_noise_evaluate(z)
         x = torch.where(x >= 0, 1., -1.) * 0.5 + 0.5
+        x = x.squeeze(1).cpu().numpy()
 
         f1_value = f1(x)
         f2_value, f2_fem_vf = f2(x)
-        g1 = -f1_value
-        g2 = f1_value - 1
-        g3 = -f2_value
 
         # out["F"] = [f1_value]
         # out["G"] = [g1, g2]
-        out["F"] = [f1_value, f2_value]
-        out["G"] = [g1, g2, g3]
-        out["fem_vf"] = f2_fem_vf
+        out["F"] = [f1_value, -f2_value]
+        out["G"] = [-f1_value, f1_value - 1, -f2_value]
+        """
+        Можно просто добавить 4-ое ограничение:
+        g4 = np.abs(1 - f1_value / f2_fem_vf) * 100 - 6
+        То есть разница между объемной долей в FEM и VOX не различалась больше, чем на 6%
+        Ещё можно попробовать вместо f1_value использовать f2_fem_vf
+        """
 
 
 def main():
@@ -285,8 +288,8 @@ def main():
         net_M=net_M,
         net_G=net_G,
         n_var=n_var,
-        n_obj=1,
-        n_ieq_constr=2,
+        n_obj=2,
+        n_ieq_constr=3,
         zl=lower_bound,
         zu=upper_bound,
         opt_space=opt_space,
@@ -347,8 +350,8 @@ if __name__ == "__main__":
         net_M=net_M,
         net_G=net_G,
         n_var=n_var,
-        n_obj=1,
-        n_ieq_constr=2,
+        n_obj=2,
+        n_ieq_constr=3,
         zl=lower_bound,
         zu=upper_bound,
         opt_space=opt_space,
@@ -358,7 +361,7 @@ if __name__ == "__main__":
     sampling = LHS(device=device, iterations=1000)
     algorithm = NSGA2(pop_size=batch_size, sampling=sampling)
 
-    res = minimize(problem, algorithm, termination=("n_gen", 2), verbose=True, seed=42)
+    res = minimize(problem, algorithm, termination=("n_gen", 10), verbose=True, seed=42)
     print("Optimization runtime:", res.exec_time)
 
     generate(net_M, net_G, res.X, None, opt_space, blocks_zero_noise)
