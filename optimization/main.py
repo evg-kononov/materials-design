@@ -1,5 +1,7 @@
 import re
 import os
+import dill
+import pickle
 import sys
 import torch
 import numpy as np
@@ -14,7 +16,7 @@ from torch import nn
 from network import MappingNetwork, Generator, StyleBlock
 from training_loop import generate_noise, mixing_regularization, generate_z, data_plot
 
-#from util import expressions
+# from util import expressions
 from util.wolfram import inp_preparation
 from pymoo.core.callback import Callback
 
@@ -158,10 +160,11 @@ class MyCallback(Callback):
     def __init__(self) -> None:
         super().__init__()
         self.data["F"] = []
-
+        self.data["G"] = []
 
     def notify(self, algorithm):
         self.data["F"].append(algorithm.pop.get("F"))
+        self.data["G"].append(algorithm.pop.get("G"))
 
 
 class OptimalDesign(Problem):
@@ -251,7 +254,7 @@ class OptimalDesign(Problem):
         # out["F"] = [f1_value]
         # out["G"] = [g1, g2]
         out["F"] = [f1_value, -f2_value]
-        out["G"] = [-f1_value, f1_value - 1, -f2_value]
+        out["G"] = [-f2_fem_vf, -f1_value, f1_value - 1, -f2_value]
         """
         Можно просто добавить 4-ое ограничение:
         g4 = np.abs(1 - f1_value / f2_fem_vf) * 100 - 6
@@ -262,19 +265,20 @@ class OptimalDesign(Problem):
 
 if __name__ == "__main__":
     # main()
-    batch_size = 100
-    d_latent = 64
+    batch_size = 60
+    d_latent = 128
     n_layers = 4
     lr_multiplier = 0.01
     log_resolution = 6
-    n_features = 16
-    max_features = 64
+    n_features = 32
+    max_features = 128
     activation = nn.Tanh()
 
     net_M = MappingNetwork(d_latent, n_layers, lr_multiplier).eval()
     net_G = Generator(log_resolution, d_latent, n_features, max_features, activation=activation).eval()
 
-    ckpt_path = r"../checkpoint/042000_133.pt"
+    ckpt = "043000_141"
+    ckpt_path = r"../checkpoint/" + ckpt + ".pt"
     checkpoint = torch.load(ckpt_path, map_location=torch.device("cpu"))
     net_M.load_state_dict(checkpoint["net_M_ema"])
     net_G.load_state_dict(checkpoint["net_G_ema"])
@@ -303,7 +307,7 @@ if __name__ == "__main__":
         net_G=net_G,
         n_var=n_var,
         n_obj=2,
-        n_ieq_constr=3,
+        n_ieq_constr=4,
         zl=lower_bound,
         zu=upper_bound,
         opt_space=opt_space,
@@ -311,12 +315,29 @@ if __name__ == "__main__":
     )
 
     sampling = LHS(device=device, iterations=1000)
-    algorithm = NSGA2(pop_size=batch_size, sampling=sampling, save_history=True, callback=MyCallback())
+    algorithm = NSGA2(pop_size=batch_size, sampling=sampling)
 
-    res = minimize(problem, algorithm, termination=("n_gen", 10), verbose=True, seed=42)
+    res = minimize(
+        problem,
+        algorithm,
+        termination=("n_gen", 20),
+        verbose=True,
+        seed=42,
+        callback=MyCallback(),
+        save_history=True
+    )
     print("Optimization runtime:", res.exec_time)
 
-    generate(net_M, net_G, res.X, None, opt_space, blocks_zero_noise)
+
+    with open(f"results/{ckpt}_{opt_space}_{batch_size}", "wb") as f:
+        pickle.dump([res.X, res.F, res.G], f)
+
+    with open(f"checkpoint/{ckpt}_{opt_space}_{batch_size}", "wb") as f:
+        dill.dump(algorithm, f)
+
+
+
+    #generate(net_M, net_G, res.X, None, opt_space, blocks_zero_noise)
 
     # plt.scatter(res.F[:, 0], res.F[:, 1], s=30, facecolors="none", edgecolors="blue")
     # plt.title("Objective Space")
