@@ -1,4 +1,4 @@
-# -*- coding: mbcs -*-
+# -*- coding: utf-8 -*-
 # Do not delete the following import lines
 import time
 
@@ -65,7 +65,7 @@ def calc_young(start_idx, load_path, save_path):
         print " "
         job_name = "Jobs"
         inp_path = inp_path[:-4]  # [:-4] - обрезает ".inp"
-        file_name = inp_path.split("\\")[-1]
+        file_name = inp_path.split("/")[-1]
         print file_name + ".inp"
 
         mdb.ModelFromInputFile(name=file_name, inputFileName=inp_path + ".inp")
@@ -110,7 +110,7 @@ def calc_young(start_idx, load_path, save_path):
                 explicitPrecision=SINGLE, nodalOutputPrecision=SINGLE, echoPrint=OFF,
                 modelPrint=OFF, contactPrint=OFF, historyPrint=OFF, userSubroutine="",
                 scratch="", resultsFormat=ODB, numThreadsPerMpiProcess=1,
-                multiprocessingMode=DEFAULT, numCpus=12, numDomains=12, numGPUs=0)
+                multiprocessingMode=DEFAULT, numCpus=16, numDomains=32, numGPUs=0)
         mdb.jobs[job_name].submit(consistencyChecking=OFF)
         mdb.jobs[job_name].waitForCompletion()
 

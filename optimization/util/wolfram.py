@@ -7,7 +7,7 @@ import torch
 
 from wolframclient.evaluation import WolframEvaluatorPool
 from wolframclient.evaluation.kernel.kernelcontroller import WolframKernelController
-from wolframclient.language import wl
+from wolframclient.language import wl, wlexpr
 from util.expressions import expr
 
 import logging
@@ -17,15 +17,16 @@ logging.basicConfig(level=logging.INFO)
 
 async def main(x, idxs, poolsize):
     async with WolframEvaluatorPool(
+        "/home/evgeniy-kononov/Documents/Wolfram/Mathematica/13.2/Executables/WolframKernel",
         poolsize=poolsize,
         kernel_loglevel=logging.INFO,
 
     ) as pool:
         start = time.perf_counter()
 
-        tasks = [pool.evaluate(expr) for i in range(len(x))]
-
+        tasks = [pool.evaluate(wlexpr(expr)) for i in range(len(x))]
         await asyncio.gather(*tasks)
+
         tasks = []
         for x_i, i in zip(x, idxs):
             task = pool.evaluate(wl.Global.toFEM(x_i, i))

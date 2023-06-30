@@ -1,4 +1,5 @@
 expr = '''
+a=0;
 toFEM[x_,num_]:=(
     Get["NDSolve`FEM`"];
     Get["MeshTools`"];
@@ -208,8 +209,11 @@ toFEM[x_,num_]:=(
     porousname=FileNameJoin[{"inps",porousname}];
     Export[porousname,exporttextporous,"Text"];
     
-    
     If[twophaseflag,twophasename=StringJoin["structure_"<>ToString[uniquenumber],"_2phase_ZLoad.inp"];
     Export[twophasename,exporttext2phase,"Text"]];
-    )
+    
+    Pause[1];
+    
+    );
+Pause[5];
 '''

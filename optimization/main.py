@@ -112,7 +112,7 @@ def f1(x):
 
 def f2(x):
     # Convert a voxel object into a finite element model
-    inp_paths = inp_preparation(x, poolsize=12)
+    inp_paths = inp_preparation(x, poolsize=poolsize)
     load_path = "inp_paths.txt"
     with open(load_path, "w+") as f:
         for inp_path in inp_paths:
@@ -128,7 +128,7 @@ def f2(x):
     abaqus = "abaqus"
     if "ABAQUS_BAT_PATH" in os.environ.keys():
         abaqus = os.environ["ABAQUS_BAT_PATH"]
-    abaqus_script_path = "util/abaqus_script.py"
+    abaqus_script_path = r"util/abaqus_script.py"
     while True:
         if os.path.exists("sys_exit.txt"):
             with open("sys_exit.txt", "r+") as f:
@@ -253,7 +253,8 @@ class OptimalDesign(Problem):
 
         # out["F"] = [f1_value]
         # out["G"] = [g1, g2]
-        out["F"] = [f1_value, -f2_value]
+        # out["F"] = [f1_value, -f2_value] # Оптимизация для объемной доли по вокселям
+        out["F"] = [f2_fem_vf, -f2_value] # Оптимизация для объемной доли по FEM
         out["G"] = [-f2_fem_vf, -f1_value, f1_value - 1, -f2_value]
         """
         Можно просто добавить 4-ое ограничение:
@@ -265,7 +266,8 @@ class OptimalDesign(Problem):
 
 if __name__ == "__main__":
     # main()
-    batch_size = 60
+    poolsize = 16
+    batch_size = 64
     d_latent = 128
     n_layers = 4
     lr_multiplier = 0.01
@@ -277,7 +279,7 @@ if __name__ == "__main__":
     net_M = MappingNetwork(d_latent, n_layers, lr_multiplier).eval()
     net_G = Generator(log_resolution, d_latent, n_features, max_features, activation=activation).eval()
 
-    ckpt = "043000_141"
+    ckpt = "024000_141"
     ckpt_path = r"../checkpoint/" + ckpt + ".pt"
     checkpoint = torch.load(ckpt_path, map_location=torch.device("cpu"))
     net_M.load_state_dict(checkpoint["net_M_ema"])
@@ -329,10 +331,10 @@ if __name__ == "__main__":
     print("Optimization runtime:", res.exec_time)
 
 
-    with open(f"results/{ckpt}_{opt_space}_{batch_size}", "wb") as f:
+    with open(f"results/{ckpt}_{opt_space}_{batch_size}_fem_vf", "wb") as f:
         pickle.dump([res.X, res.F, res.G], f)
 
-    with open(f"checkpoint/{ckpt}_{opt_space}_{batch_size}", "wb") as f:
+    with open(f"checkpoint/{ckpt}_{opt_space}_{batch_size}_fem_vf", "wb") as f:
         dill.dump(algorithm, f)
 
 
