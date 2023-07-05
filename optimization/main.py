@@ -57,7 +57,7 @@ def generate(net_M, net_G, var, var_shapes, opt_space, block_zero_noise=None):
         plt.show()
 
 
-def get_boundaries(opt_space, lower=-3, upper=3, var_shapes=None, net_M=None):
+def get_boundaries(opt_space, lower=-5, upper=5, var_shapes=None, net_M=None):
     """
     opt_space - optimization space, either "z" or "z+noise" or "w or "w+noise"
     lower - base lower bound for the variables (usually min of N(0, 1))
@@ -66,13 +66,14 @@ def get_boundaries(opt_space, lower=-3, upper=3, var_shapes=None, net_M=None):
     net_M - mapping network to determine the boundaries of the "w" or "w+noise" space
     """
 
-    def w_boundaries(size=int(10e5)):
+    def w_boundaries(size=int(10e6)):
         """
         size - amount of generated noise (the more, the more accurately the [min, max] range is determined)
         """
         with torch.no_grad():
             w = net_M((upper - lower) * torch.rand(size, var_shapes[0]) + lower)
             wl, wu = w.min().item(), w.max().item()
+            #wl, wu = w.min(dim=0).values.numpy(), w.max(dim=0).values.numpy()
             return wl, wu
 
     if opt_space == "z" or opt_space == "z+noise":
@@ -253,8 +254,8 @@ class OptimalDesign(Problem):
 
         # out["F"] = [f1_value]
         # out["G"] = [g1, g2]
-        # out["F"] = [f1_value, -f2_value] # Оптимизация для объемной доли по вокселям
-        out["F"] = [f2_fem_vf, -f2_value] # Оптимизация для объемной доли по FEM
+        out["F"] = [f1_value, -f2_value] # Оптимизация для объемной доли по вокселям
+        # out["F"] = [f2_fem_vf, -f2_value] # Оптимизация для объемной доли по FEM
         out["G"] = [-f2_fem_vf, -f1_value, f1_value - 1, -f2_value]
         """
         Можно просто добавить 4-ое ограничение:
@@ -265,7 +266,7 @@ class OptimalDesign(Problem):
 
 
 if __name__ == "__main__":
-    # main()
+    # main
     poolsize = 16
     batch_size = 64
     d_latent = 128
@@ -302,7 +303,6 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     net_M = net_M.to(device)
     net_G = net_G.to(device)
-
     problem = OptimalDesign(
         batch_size=batch_size,
         net_M=net_M,
@@ -331,10 +331,10 @@ if __name__ == "__main__":
     print("Optimization runtime:", res.exec_time)
 
 
-    with open(f"results/{ckpt}_{opt_space}_{batch_size}_fem_vf", "wb") as f:
+    with open(f"results/{ckpt}_{opt_space}_-5_5_{batch_size}", "wb") as f:
         pickle.dump([res.X, res.F, res.G], f)
 
-    with open(f"checkpoint/{ckpt}_{opt_space}_{batch_size}_fem_vf", "wb") as f:
+    with open(f"checkpoint/{ckpt}_{opt_space}_-5_5_{batch_size}", "wb") as f:
         dill.dump(algorithm, f)
 
 
