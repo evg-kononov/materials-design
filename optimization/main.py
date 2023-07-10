@@ -7,6 +7,7 @@ import torch
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from pymoo.operators.crossover.sbx import SBX
 
 from lhs import LHS
 from pymoo.core.problem import Problem
@@ -57,7 +58,7 @@ def generate(net_M, net_G, var, var_shapes, opt_space, block_zero_noise=None):
         plt.show()
 
 
-def get_boundaries(opt_space, lower=-5, upper=5, var_shapes=None, net_M=None):
+def get_boundaries(opt_space, lower=-3, upper=3, var_shapes=None, net_M=None):
     """
     opt_space - optimization space, either "z" or "z+noise" or "w or "w+noise"
     lower - base lower bound for the variables (usually min of N(0, 1))
@@ -317,7 +318,7 @@ if __name__ == "__main__":
     )
 
     sampling = LHS(device=device, iterations=1000)
-    algorithm = NSGA2(pop_size=batch_size, sampling=sampling)
+    algorithm = NSGA2(pop_size=batch_size, sampling=sampling, save_history=True)
 
     res = minimize(
         problem,
@@ -331,10 +332,10 @@ if __name__ == "__main__":
     print("Optimization runtime:", res.exec_time)
 
 
-    with open(f"results/{ckpt}_{opt_space}_-5_5_{batch_size}", "wb") as f:
-        pickle.dump([res.X, res.F, res.G], f)
+    with open(f"results/{ckpt}_{opt_space}_{batch_size}_history", "wb") as f:
+        pickle.dump([res.X, res.F, res.G, res.history], f)
 
-    with open(f"checkpoint/{ckpt}_{opt_space}_-5_5_{batch_size}", "wb") as f:
+    with open(f"checkpoint/{ckpt}_{opt_space}_{batch_size}_history", "wb") as f:
         dill.dump(algorithm, f)
 
 
