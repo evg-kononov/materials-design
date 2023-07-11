@@ -287,7 +287,7 @@ if __name__ == "__main__":
     net_M.load_state_dict(checkpoint["net_M_ema"])
     net_G.load_state_dict(checkpoint["net_G_ema"])
 
-    opt_space = "w"
+    opt_space = "z"
     if opt_space == "z" or opt_space == "w":
         blocks_zero_noise = None
         n_var = d_latent
@@ -333,10 +333,39 @@ if __name__ == "__main__":
 
 
     with open(f"results/{ckpt}_{opt_space}_{batch_size}_history", "wb") as f:
-        pickle.dump([res.X, res.F, res.G, res.history], f)
+        pickle.dump([res.X, res.F, res.G], f)
 
-    with open(f"checkpoint/{ckpt}_{opt_space}_{batch_size}_history", "wb") as f:
-        dill.dump(algorithm, f)
+    hist = res.history
+    n_evals = []
+    hist_F = []
+    hist_cv = []
+    hist_cv_avg = []
+
+    for algo in hist:
+        # store the number of function evaluations
+        n_evals.append(algo.evaluator.n_eval)
+
+        # retrieve the optimum from the algorithm
+        opt = algo.opt
+
+        # store the least contraint violation and the average in each population
+        hist_cv.append(opt.get("CV").min())
+        hist_cv_avg.append(algo.pop.get("CV").mean())
+
+        # filter out only the feasible and append and objective space values
+        feas = np.where(opt.get("feasible"))[0]
+        hist_F.append(opt.get("F")[feas])
+
+    output = {
+        "exec_time": res.exec_time,
+        "n_evals": n_evals,
+        "hist_F": hist_F,
+        "hist_cv": hist_cv,
+        "hist_cv_avg": hist_cv_avg
+    }
+
+    with open(f"history/{ckpt}_{opt_space}_{batch_size}", "wb") as f:
+        dill.dump(output, f)
 
 
 
