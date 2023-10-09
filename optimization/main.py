@@ -280,7 +280,6 @@ if __name__ == "__main__":
 
     net_M = MappingNetwork(d_latent, n_layers, lr_multiplier).eval()
     net_G = Generator(log_resolution, d_latent, n_features, max_features, activation=activation).eval()
-
     ckpt = "024000_141"
     ckpt_path = r"../checkpoint/" + ckpt + ".pt"
     checkpoint = torch.load(ckpt_path, map_location=torch.device("cpu"))

@@ -272,7 +272,7 @@ class StyleBlock(nn.Module):
         
     def forward(self, x: torch.Tensor, w: torch.Tensor, noise: Optional[torch.Tensor]):
         """
-        x - the input feature map of shape [batch_size, in_features, geight, width, deepth]
+        x - the input feature map of shape [batch_size, in_features, height, width, deepth]
         w - w with shape [batch_size, d_latent]
         noise - a tensor of shape [batch_size, 1, height, width, deepth]
         """
